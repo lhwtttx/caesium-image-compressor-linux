@@ -314,8 +314,43 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/main.cpp b/src/main.cpp
      w.show();
 diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
 --- a/src/MainWindow.cpp	2025-05-07 16:25:34.000000000 +0800
-+++ b/src/MainWindow.cpp	2026-11-26 16:24:10.869041749 +0800
-@@ -52,7 +52,6 @@
++++ b/src/MainWindow.cpp	2026-11-26 16:51:12.704257956 +0800
+@@ -31,6 +31,34 @@
+ #include "./updater/win/winsparkle.h"
+ #endif
+ 
++namespace {
++// Qt 5 的 QSettings 无法序列化 QList<int>（保存时报 unknown type 1037），
++// 分隔栏尺寸统一转成 QVariantList 存取。
++QVariantList toVariantList(const QList<int>& values)
++{
++    QVariantList list;
++    list.reserve(values.size());
++    for (int value : values) {
++        list.append(value);
++    }
++    return list;
++}
++
++QList<int> fromVariantList(const QVariant& value, const QList<int>& fallback)
++{
++    const QVariantList list = value.toList();
++    if (list.isEmpty()) {
++        return fallback;
++    }
++    QList<int> values;
++    values.reserve(list.size());
++    for (const QVariant& item : list) {
++        values.append(item.toInt());
++    }
++    return values;
++}
++}  // namespace
++
+ MainWindow::MainWindow(QWidget* parent)
+     : QMainWindow(parent)
+     , ui(new Ui::MainWindow)
+@@ -52,7 +80,6 @@
      this->previewWatcher = new QFutureWatcher<ImagePreview>();
      this->listContextMenu = new QMenu();
      this->trayIconContextMenu = new QMenu();
@@ -323,7 +358,7 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
      this->proxyModel = new CImageSortFilterProxyModel();
      this->trayIcon = new QSystemTrayIcon();
  
-@@ -102,37 +101,37 @@
+@@ -102,37 +129,37 @@
      connect(ui->preview_GraphicsView->verticalScrollBar(), &QAbstractSlider::valueChanged, ui->previewCompressed_GraphicsView, &QZoomGraphicsView::setVerticalScrollBarValue);
      connect(ui->previewCompressed_GraphicsView->horizontalScrollBar(), &QAbstractSlider::valueChanged, ui->preview_GraphicsView, &QZoomGraphicsView::setHorizontalScrollBarValue);
      connect(ui->previewCompressed_GraphicsView->verticalScrollBar(), &QAbstractSlider::valueChanged, ui->preview_GraphicsView, &QZoomGraphicsView::setVerticalScrollBarValue);
@@ -374,7 +409,7 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
  
      this->on_keepAspectRatio_CheckBox_toggled(ui->keepAspectRatio_CheckBox->isChecked());
      this->on_doNotEnlarge_CheckBox_toggled(ui->doNotEnlarge_CheckBox->isChecked());
-@@ -147,11 +146,9 @@
+@@ -147,11 +174,9 @@
      ui->actionToolbarHide->setChecked(ui->toolBar->isHidden());
  
      if (QSettings().value("preferences/general/send_usage_reports", true).toBool()) {
@@ -389,7 +424,7 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
      }
  
      QCommandLineParser commandLineParser;
-@@ -159,8 +156,6 @@
+@@ -159,8 +184,6 @@
      if (const QStringList args = commandLineParser.positionalArguments(); !args.isEmpty()) {
          this->importFromArgs(args);
      }
@@ -398,7 +433,7 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
  }
  
  MainWindow::~MainWindow()
-@@ -174,7 +169,6 @@
+@@ -174,7 +197,6 @@
      delete aboutDialog;
      delete keepDatesButtonGroup;
      delete compressionWatcher;
@@ -406,7 +441,34 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
      delete previewWatcher;
      delete trayIcon;
      delete translator;
-@@ -625,7 +619,11 @@
+@@ -315,12 +337,12 @@
+ {
+     QSettings().setValue("mainwindow/geometry", this->saveGeometry());
+     QSettings().setValue("mainwindow/window_state", this->saveState());
+-    QSettings().setValue("mainwindow/left_splitter_sizes", QVariant::fromValue<QList<int>>(ui->sidebar_HSplitter->sizes()));
++    QSettings().setValue("mainwindow/left_splitter_sizes", toVariantList(ui->sidebar_HSplitter->sizes()));
+     QSettings().setValue("mainwindow/previews_visible", ui->actionShow_previews->isChecked());
+     QSettings().setValue("mainwindow/auto_preview", ui->actionAuto_preview->isChecked());
+ 
+     if (ui->actionShow_previews->isChecked()) {
+-        QSettings().setValue("mainwindow/main_splitter_sizes", QVariant::fromValue<QList<int>>(ui->main_VSplitter->sizes()));
++        QSettings().setValue("mainwindow/main_splitter_sizes", toVariantList(ui->main_VSplitter->sizes()));
+     }
+     QSettings().setValue("mainwindow/list_view/header_column_size/name", ui->imageList_TreeView->header()->sectionSize(CImageColumns::NAME_COLUMN));
+     QSettings().setValue("mainwindow/list_view/header_column_size/size", ui->imageList_TreeView->header()->sectionSize(CImageColumns::SIZE_COLUMN));
+@@ -377,8 +399,9 @@
+ {
+     this->restoreGeometry(QSettings().value("mainwindow/geometry").toByteArray());
+     this->restoreState(QSettings().value("mainwindow/window_state").toByteArray());
+-    ui->sidebar_HSplitter->setSizes(QSettings().value("mainwindow/left_splitter_sizes", QVariant::fromValue<QList<int>>({ 600, 1 })).value<QList<int>>());
+-    ui->main_VSplitter->setSizes(QSettings().value("mainwindow/main_splitter_sizes", QVariant::fromValue<QList<int>>({ 500, 250 })).value<QList<int>>());
++    // 右侧选项栏默认展开，用户拖动后的尺寸会记住
++    ui->sidebar_HSplitter->setSizes(fromVariantList(QSettings().value("mainwindow/left_splitter_sizes"), { 620, 400 }));
++    ui->main_VSplitter->setSizes(fromVariantList(QSettings().value("mainwindow/main_splitter_sizes"), { 500, 250 }));
+     ui->actionShow_previews->setChecked(QSettings().value("mainwindow/previews_visible", true).toBool());
+     ui->actionAuto_preview->setChecked(QSettings().value("mainwindow/auto_preview", false).toBool());
+     ui->toolBar->setVisible(QSettings().value("mainwindow/toolbar/visible", true).toBool());
+@@ -625,7 +648,11 @@
          int maxThreads = QSettings().value("preferences/general/multithreading_max_threads", QThread::idealThreadCount()).toInt();
          QThreadPool::globalInstance()->setMaxThreadCount(maxThreads);
      }
@@ -419,7 +481,7 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
  
      this->compressionWatcher = new QFutureWatcher<void>();
      connect(this->compressionWatcher, &QFutureWatcherBase::finished, this, &MainWindow::compressionFinished);
-@@ -814,10 +812,6 @@
+@@ -814,10 +841,6 @@
      compressionSummary.totalCompressedSize = this->cImageModel->compressedItemsSize();
      compressionSummary.elapsedTime = compressionTimer.isValid() ? compressionTimer.elapsed() : 0;
  
@@ -430,6 +492,19 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
      qInfo() << "Compression ended successfully.\nTotal images:" << compressionSummary.totalImages
              << "\nUncompressed size:" << toHumanSize(compressionSummary.totalUncompressedSize)
              << "\nCompressed size:" << toHumanSize(compressionSummary.totalCompressedSize)
+@@ -1108,10 +1131,10 @@
+     QSettings().setValue("mainwindow/previews_visible", toggled);
+ 
+     if (!toggled) {
+-        QSettings().setValue("mainwindow/main_splitter_sizes", QVariant::fromValue<QList<int>>(ui->main_VSplitter->sizes()));
++        QSettings().setValue("mainwindow/main_splitter_sizes", toVariantList(ui->main_VSplitter->sizes()));
+         ui->main_VSplitter->setSizes(QList<int>({ 500, 0 }));
+     } else {
+-        ui->main_VSplitter->setSizes(QSettings().value("mainwindow/main_splitter_sizes", QVariant::fromValue<QList<int>>({ 500, 250 })).value<QList<int>>());
++        ui->main_VSplitter->setSizes(fromVariantList(QSettings().value("mainwindow/main_splitter_sizes"), { 500, 250 }));
+         if (this->selectedCount == 1) {
+             bool autoPreview = QSettings().value("mainwindow/auto_preview", false).toBool();
+             this->previewImage(this->proxyModel->mapToSource(this->selectedIndexes.at(0)), autoPreview);
 diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.h b/src/MainWindow.h
 --- a/src/MainWindow.h	2025-05-07 16:25:34.000000000 +0800
 +++ b/src/MainWindow.h	2026-11-26 16:26:29.465224295 +0800
