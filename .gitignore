@@ -1,0 +1,24 @@
+# 构建中间产物
+.build/
+build/
+dist/
+
+# 打包产物
+*.deb
+*.dsc
+*.changes
+*.buildinfo
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 系统
+.DS_Store
+Thumbs.db

@@ -1,0 +1,991 @@
+diff -ruN -x '*.ts' -x '*.svg' a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2025-05-07 16:25:34.000000000 +0800
++++ b/CMakeLists.txt	2026-11-26 16:27:23.822884426 +0800
+@@ -82,8 +82,8 @@
+ if (NOT WIN32)
+     link_directories(${LIBCAESIUM_SOURCE_DIR}/target/${LIBCAESIUM_BUILD_TYPE})
+ endif ()
+-find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Core Gui Concurrent Svg Network LinguistTools REQUIRED)
+-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Core Gui Concurrent Svg Network LinguistTools REQUIRED)
++find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Core Gui Concurrent LinguistTools REQUIRED)
++find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Core Gui Concurrent LinguistTools REQUIRED)
+ 
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
+@@ -111,7 +111,6 @@
+         src/exceptions/ImageNotSupportedException.cpp
+         src/exceptions/ImageTooBigException.cpp
+         src/dialogs/PreferencesDialog.cpp
+-        src/network/NetworkOperations.cpp
+         src/dialogs/UsageStatsDialog.cpp
+         src/dialogs/AdvancedImportDialog.cpp
+         src/services/Importer.cpp
+@@ -187,14 +186,7 @@
+     if (NOT LIBCAESIUM)
+         install(
+                 FILES ${LIBCAESIUM_SOURCE_DIR}/target/${LIBCAESIUM_BUILD_TYPE}/libcaesium.so
+-                DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+-        )
+-        install(
+-                CODE "execute_process(
+-                COMMAND ${CMAKE_COMMAND} -E create_symlink
+-                ${CMAKE_INSTALL_PREFIX}/lib/libcaesium.so
+-                /usr/lib/libcaesium.so
+-            )"
++                DESTINATION ${CMAKE_INSTALL_LIBDIR}
+         )
+     endif ()
+ endif ()
+@@ -214,19 +206,21 @@
+     set(LIBCAESIUM_EXTERNAL_PATH ${LIBCAESIUM_SOURCE_DIR}/target/${LIBCAESIUM_BUILD_TYPE}/libcaesium.so)
+ endif ()
+ 
+-ExternalProject_Add(
+-        libcaesium
+-        GIT_REPOSITORY https://github.com/Lymphatus/libcaesium
+-        GIT_TAG ${LIBCAESIUM_VERSION}
+-        CONFIGURE_COMMAND ""
+-        BUILD_COMMAND ${CARGO} build ${CARGO_BUILD_FLAGS} ${CARGO_TARGET}
+-        INSTALL_COMMAND ""
+-        BINARY_DIR ${LIBCAESIUM_SOURCE_DIR}
+-        LOG_OUTPUT_ON_FAILURE ON
+-        LOG_BUILD ON
+-        BUILD_BYPRODUCTS ${LIBCAESIUM_EXTERNAL_PATH}
+-)
+-add_dependencies(${TARGET} libcaesium)
++if (NOT LIBCAESIUM)
++    ExternalProject_Add(
++            libcaesium
++            GIT_REPOSITORY https://github.com/Lymphatus/libcaesium
++            GIT_TAG ${LIBCAESIUM_VERSION}
++            CONFIGURE_COMMAND ""
++            BUILD_COMMAND ${CARGO} build ${CARGO_BUILD_FLAGS} ${CARGO_TARGET}
++            INSTALL_COMMAND ""
++            BINARY_DIR ${LIBCAESIUM_SOURCE_DIR}
++            LOG_OUTPUT_ON_FAILURE ON
++            LOG_BUILD ON
++            BUILD_BYPRODUCTS ${LIBCAESIUM_EXTERNAL_PATH}
++    )
++    add_dependencies(${TARGET} libcaesium)
++endif ()
+ 
+ # --- WinSparkle ---
+ if (WIN32)
+@@ -251,16 +245,18 @@
+ 
+ set_target_properties(${TARGET} PROPERTIES OUTPUT_NAME "Caesium Image Compressor")
+ if (APPLE)
+-    target_link_libraries(${TARGET} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Concurrent Qt${QT_VERSION_MAJOR}::Svg Qt${QT_VERSION_MAJOR}::Network ${OSX_FRAMEWORKS} caesium)
++    target_link_libraries(${TARGET} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Concurrent ${OSX_FRAMEWORKS} caesium)
+ elseif (WIN32)
+-    target_link_libraries(${TARGET} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Concurrent Qt${QT_VERSION_MAJOR}::Svg Qt${QT_VERSION_MAJOR}::Network winsparkle ${LIBCAESIUM_SOURCE_DIR}/target/x86_64-pc-windows-gnu/${LIBCAESIUM_BUILD_TYPE}/caesium.dll)
++    target_link_libraries(${TARGET} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Concurrent winsparkle ${LIBCAESIUM_SOURCE_DIR}/target/x86_64-pc-windows-gnu/${LIBCAESIUM_BUILD_TYPE}/caesium.dll)
+ else ()
+     set_target_properties(${TARGET} PROPERTIES OUTPUT_NAME "caesium-image-compressor")
+-    target_link_libraries(${TARGET} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Concurrent Qt${QT_VERSION_MAJOR}::Svg Qt${QT_VERSION_MAJOR}::Network)
+-    if (NOT LIBCAESIUM)
++    target_link_libraries(${TARGET} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Concurrent)
++    if (LIBCAESIUM)
++        target_link_libraries(${TARGET} PRIVATE ${LIBCAESIUM})
++    else ()
+         target_link_libraries(${TARGET} PRIVATE caesium)
+     endif ()
+ endif ()
+ 
+-add_subdirectory(tests)
+-add_test(NAME CsTests COMMAND CsTests)
++# add_subdirectory(tests)  # 本项目构建不包含单元测试
++# add_test(NAME CsTests COMMAND CsTests)
+diff -ruN -x '*.ts' -x '*.svg' a/resources/resources.qrc b/resources/resources.qrc
+--- a/resources/resources.qrc	2025-05-07 16:25:34.000000000 +0800
++++ b/resources/resources.qrc	2026-11-26 16:24:10.869041749 +0800
+@@ -2,23 +2,23 @@
+     <qresource prefix="/">
+         <file>icons/logo.png</file>
+         <file>icons/logo_mono.png</file>
+-        <file>icons/compression_statuses/compressed.svg</file>
+-        <file>icons/compression_statuses/uncompressed.svg</file>
+-        <file>icons/compression_statuses/compressing.svg</file>
+-        <file>icons/compression_statuses/error.svg</file>
+-        <file>icons/ui/language.svg</file>
+-        <file>icons/ui/settings.svg</file>
++        <file>icons/compression_statuses/compressed.png</file>
++        <file>icons/compression_statuses/uncompressed.png</file>
++        <file>icons/compression_statuses/compressing.png</file>
++        <file>icons/compression_statuses/error.png</file>
++        <file>icons/ui/language.png</file>
++        <file>icons/ui/settings.png</file>
+         <file>ssl/win_dsa_pub.pem</file>
+-        <file>icons/compression_statuses/warning.svg</file>
+-        <file>icons/ui/add_files.svg</file>
+-        <file>icons/ui/add_folder.svg</file>
+-        <file>icons/ui/donate.svg</file>
+-        <file>icons/ui/preferences.svg</file>
+-        <file>icons/ui/remove.svg</file>
+-        <file>icons/ui/trash.svg</file>
+-        <file>icons/ui/compress.svg</file>
+-        <file>icons/ui/preview.svg</file>
+-        <file>icons/ui/help.svg</file>
++        <file>icons/compression_statuses/warning.png</file>
++        <file>icons/ui/add_files.png</file>
++        <file>icons/ui/add_folder.png</file>
++        <file>icons/ui/donate.png</file>
++        <file>icons/ui/preferences.png</file>
++        <file>icons/ui/remove.png</file>
++        <file>icons/ui/trash.png</file>
++        <file>icons/ui/compress.png</file>
++        <file>icons/ui/preview.png</file>
++        <file>icons/ui/help.png</file>
+         <file>icons/ui/loader.webp</file>
+         <file>icons/ui/v_handle.png</file>
+         <file>icons/ui/h_handle.png</file>
+diff -ruN -x '*.ts' -x '*.svg' a/src/dialogs/AdvancedImportDialog.cpp b/src/dialogs/AdvancedImportDialog.cpp
+--- a/src/dialogs/AdvancedImportDialog.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/dialogs/AdvancedImportDialog.cpp	2026-11-26 16:24:10.869041749 +0800
+@@ -111,9 +111,9 @@
+     connect(ui->remove_Button, &QToolButton::clicked, this, &AdvancedImportDialog::onRemoveButtonClicked);
+     connect(ui->importSubfolders_CheckBox, &QCheckBox::toggled, this, &AdvancedImportDialog::onImportSubfoldersToggled);
+     connect(ui->skipBySize_CheckBox, &QCheckBox::toggled, this, &AdvancedImportDialog::onSkipBySizeToggled);
+-    connect(ui->skipBySizeCondition_ComboBox, &QComboBox::currentIndexChanged, this, &AdvancedImportDialog::onSkipBySizeConditionChanged);
+-    connect(ui->skipBySizeSize_SpinBox, &QSpinBox::valueChanged, this, &AdvancedImportDialog::onSkipBySizeValueChanged);
+-    connect(ui->skipBySizeUnit_ComboBox, &QComboBox::currentIndexChanged, this, &AdvancedImportDialog::onSkipBySizeUnitChanged);
++    connect(ui->skipBySizeCondition_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &AdvancedImportDialog::onSkipBySizeConditionChanged);
++    connect(ui->skipBySizeSize_SpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &AdvancedImportDialog::onSkipBySizeValueChanged);
++    connect(ui->skipBySizeUnit_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &AdvancedImportDialog::onSkipBySizeUnitChanged);
+     connect(ui->filenamePattern_LineEdit, &QLineEdit::textChanged, this, &AdvancedImportDialog::onFilenamePatternTextChanged);
+ }
+ 
+diff -ruN -x '*.ts' -x '*.svg' a/src/dialogs/AdvancedImportDialog.h b/src/dialogs/AdvancedImportDialog.h
+--- a/src/dialogs/AdvancedImportDialog.h	2025-05-07 16:25:34.000000000 +0800
++++ b/src/dialogs/AdvancedImportDialog.h	2026-11-26 16:24:10.869041749 +0800
+@@ -2,6 +2,7 @@
+ #define ADVANCEDIMPORTDIALOG_H
+ 
+ #include <QDialog>
++#include <QMenu>
+ #include <QFileInfo>
+ #include <QThread>
+ 
+diff -ruN -x '*.ts' -x '*.svg' a/src/dialogs/PreferencesDialog.cpp b/src/dialogs/PreferencesDialog.cpp
+--- a/src/dialogs/PreferencesDialog.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/dialogs/PreferencesDialog.cpp	2026-11-26 16:24:10.869041749 +0800
+@@ -36,19 +36,19 @@
+ 
+ void PreferencesDialog::setupConnections()
+ {
+-    connect(ui->language_ComboBox, &QComboBox::currentIndexChanged, this, &PreferencesDialog::onLanguageChanged);
+-    connect(ui->theme_ComboBox, &QComboBox::currentIndexChanged, this, &PreferencesDialog::onThemeChanged);
+-    connect(ui->themeVariant_ComboBox, &QComboBox::currentIndexChanged, this, &PreferencesDialog::onThemeVariantChanged);
+-    connect(ui->argsBehaviour_ComboBox, &QComboBox::currentIndexChanged, this, &PreferencesDialog::onArgsBehaviourChanged);
++    connect(ui->language_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &PreferencesDialog::onLanguageChanged);
++    connect(ui->theme_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &PreferencesDialog::onThemeChanged);
++    connect(ui->themeVariant_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &PreferencesDialog::onThemeVariantChanged);
++    connect(ui->argsBehaviour_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &PreferencesDialog::onArgsBehaviourChanged);
+     connect(ui->promptExit_CheckBox, &QCheckBox::toggled, this, &PreferencesDialog::onPromptExitToggled);
+     connect(ui->checkUpdatesAtStartup_CheckBox, &QCheckBox::toggled, this, &PreferencesDialog::onCheckUpdatesAtStartupToggled);
+     connect(ui->importSubfolders_CheckBox, &QCheckBox::toggled, this, &PreferencesDialog::onImportSubfoldersToggled);
+     connect(ui->sendUsageReport_CheckBox, &QCheckBox::toggled, this, &PreferencesDialog::onSendUsageReportToggled);
+     connect(ui->multithreading_CheckBox, &QCheckBox::toggled, this, &PreferencesDialog::onMultithreadingToggled);
+-    connect(ui->multithreadingMaxThreads_SpinBox, &QSpinBox::valueChanged, this, &PreferencesDialog::onMultithreadingMaxThreadsChanged);
++    connect(ui->multithreadingMaxThreads_SpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &PreferencesDialog::onMultithreadingMaxThreadsChanged);
+     connect(ui->showUsageData_Label, &QLabel::linkActivated, this, &PreferencesDialog::onShowUsageDataLinkActivated);
+     connect(ui->skipCompressionDialogs_CheckBox, &QCheckBox::toggled, this, &PreferencesDialog::onSkipCompressionDialogsToggled);
+-    connect(ui->postCompressionAction_ComboBox, &QComboBox::currentIndexChanged, this, &PreferencesDialog::onPostCompressionActionChanged);
++    connect(ui->postCompressionAction_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &PreferencesDialog::onPostCompressionActionChanged);
+     connect(ui->restart_Button, &QPushButton::pressed, this, &PreferencesDialog::onRestartButtonPressed);
+     connect(ui->threadsPriority_Slider, &QSlider::valueChanged, this, &PreferencesDialog::onThreadsPriorityChanged);
+ }
+@@ -145,7 +145,7 @@
+     QSettings().setValue("preferences/general/args_behaviour", index);
+ }
+ 
+-void PreferencesDialog::onShowUsageDataLinkActivated([[maybe_unused]] const QString& link)
++void PreferencesDialog::onShowUsageDataLinkActivated(const QString& link)
+ {
+     auto* usageStatsDialog = new UsageStatsDialog();
+     usageStatsDialog->setModal(true);
+@@ -158,11 +158,11 @@
+ {
+     auto localeConf = QSettings().value("preferences/language/locale", "default");
+     int localeIndex = 0;
+-    if (localeConf.typeId() == QVariant::Int || localeConf.typeId() == QVariant::LongLong) {
++    if (localeConf.type() == QVariant::Int || localeConf.type() == QVariant::LongLong) {
+         localeIndex = localeConf.toInt();
+         QString locale = LanguageManager::getTranslations().at(localeIndex).locale;
+         localeIndex = LanguageManager::findSortedIndex(locale);
+-    } else if (localeConf.typeId() == QVariant::String) {
++    } else if (localeConf.type() == QVariant::String) {
+         localeIndex = LanguageManager::findSortedIndex(localeConf.toString());
+     }
+ 
+diff -ruN -x '*.ts' -x '*.svg' a/src/dialogs/PreferencesDialog.h b/src/dialogs/PreferencesDialog.h
+--- a/src/dialogs/PreferencesDialog.h	2025-05-07 16:25:34.000000000 +0800
++++ b/src/dialogs/PreferencesDialog.h	2026-11-26 16:24:10.869041749 +0800
+@@ -25,7 +25,7 @@
+     static void onImportSubfoldersToggled(bool checked);
+     static void onSendUsageReportToggled(bool checked);
+     static void onMultithreadingToggled(bool checked);
+-    static void onShowUsageDataLinkActivated([[maybe_unused]] const QString& link);
++    static void onShowUsageDataLinkActivated(const QString& link);
+     static void onSkipCompressionDialogsToggled(bool checked);
+     static void onMultithreadingMaxThreadsChanged(int value);
+     static void onPostCompressionActionChanged(int value);
+diff -ruN -x '*.ts' -x '*.svg' a/src/filters/QSliderScrollFilter.cpp b/src/filters/QSliderScrollFilter.cpp
+--- a/src/filters/QSliderScrollFilter.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/filters/QSliderScrollFilter.cpp	2026-11-26 16:24:10.869041749 +0800
+@@ -1,5 +1,6 @@
+ 
+ #include "QSliderScrollFilter.h"
++#include <QCoreApplication>
+ #include <QKeyEvent>
+ 
+ bool QSliderScrollFilter::eventFilter(QObject* obj, QEvent* event)
+diff -ruN -x '*.ts' -x '*.svg' a/src/main.cpp b/src/main.cpp
+--- a/src/main.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/main.cpp	2026-11-26 16:24:10.869041749 +0800
+@@ -6,6 +6,7 @@
+ #include <QSettings>
+ #include <QStyle>
+ #include <QStyleFactory>
++#include <QScreen>
+ #include <QStyleHints>
+ #include <QUuid>
+ 
+@@ -24,13 +25,18 @@
+ {
+     int themeIndex = QSettings().value("preferences/general/theme", 0).toInt();
+     int themeVariantIndex = QSettings().value("preferences/general/theme_variant").toInt();
+-    if (themeVariantIndex == 1) {
+-        QApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
+-    } else if (themeVariantIndex == 2) {
+-        QApplication::styleHints()->setColorScheme(Qt::ColorScheme::Dark);
++
++    // Qt 5.12 has no QStyleHints::setColorScheme/colorScheme (Qt 6.5+), so resolve the
++    // dark variant from the stored preference and fall back to palette luminance.
++    bool darkMode = false;
++    if (themeVariantIndex == 2) {
++        darkMode = true;
++    } else if (themeVariantIndex == 1) {
++        darkMode = false;
++    } else {
++        darkMode = QApplication::palette().color(QPalette::Window).lightness() < 128;
+     }
+ 
+-    // From 2.4.1 and Qt 6.5, the framework can handle the switch between dark and light
+     if (themeIndex > 1) {
+         themeIndex = 1;
+     }
+@@ -44,11 +50,11 @@
+     if (themeIndex == 1) {
+         QApplication::setStyle(QStyleFactory::create(THEMES[themeIndex].theme));
+ 
+-        if (QApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark) {
++        if (darkMode) {
+             auto palette = QApplication::palette();
+             QColor purple(168, 85, 247);
+             palette.setColor(QPalette::Highlight, purple);
+-            if (QApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark) {
++            if (darkMode) {
+                 QColor darkGray(25, 25, 25);
+                 // QColor gray(32, 32, 32);
+                 QColor lightGray(82, 82, 82);
+@@ -104,13 +110,17 @@
+     qInfo() << "UUID:" << uuid;
+     MainWindow w;
+ 
+-    QScreen* spawnScreen = w.screen();
+-    if (!QGuiApplication::screens().contains(spawnScreen)) {
++    // Qt 5.12 has no QWidget::screen()/setScreen(); resolve the target screen by geometry.
++    QScreen* spawnScreen = QGuiApplication::screenAt(w.geometry().center());
++    if (!spawnScreen) {
++        spawnScreen = QGuiApplication::primaryScreen();
++    }
++    if (spawnScreen && !spawnScreen->availableGeometry().contains(w.pos())) {
+         QScreen* cursorScreen = QApplication::screenAt(QCursor::pos());
++        if (!cursorScreen) {
++            cursorScreen = spawnScreen;
++        }
+         w.move(cursorScreen->availableGeometry().center() - w.rect().center());
+-        w.setScreen(cursorScreen);
+-    } else if (!spawnScreen->availableGeometry().contains(w.pos())) {
+-        w.move(spawnScreen->availableGeometry().center() - w.rect().center());
+     }
+ 
+     w.show();
+diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
+--- a/src/MainWindow.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/MainWindow.cpp	2026-11-26 16:24:10.869041749 +0800
+@@ -52,7 +52,6 @@
+     this->previewWatcher = new QFutureWatcher<ImagePreview>();
+     this->listContextMenu = new QMenu();
+     this->trayIconContextMenu = new QMenu();
+-    this->networkOperations = new NetworkOperations();
+     this->proxyModel = new CImageSortFilterProxyModel();
+     this->trayIcon = new QSystemTrayIcon();
+ 
+@@ -102,37 +101,37 @@
+     connect(ui->preview_GraphicsView->verticalScrollBar(), &QAbstractSlider::valueChanged, ui->previewCompressed_GraphicsView, &QZoomGraphicsView::setVerticalScrollBarValue);
+     connect(ui->previewCompressed_GraphicsView->horizontalScrollBar(), &QAbstractSlider::valueChanged, ui->preview_GraphicsView, &QZoomGraphicsView::setHorizontalScrollBarValue);
+     connect(ui->previewCompressed_GraphicsView->verticalScrollBar(), &QAbstractSlider::valueChanged, ui->preview_GraphicsView, &QZoomGraphicsView::setVerticalScrollBarValue);
+-    connect(keepDatesButtonGroup, &QButtonGroup::buttonClicked, this, &MainWindow::keepDatesButtonGroupClicked);
++    connect(keepDatesButtonGroup, qOverload<QAbstractButton*>(&QButtonGroup::buttonClicked), this, &MainWindow::keepDatesButtonGroupClicked);
+ 
+     connect(this->previewWatcher, &QFutureWatcher<ImagePreview>::resultReadyAt, this, &MainWindow::showPreview);
+     connect(this->previewWatcher, &QFutureWatcher<ImagePreview>::finished, this, &MainWindow::previewFinished);
+     connect(this->previewWatcher, &QFutureWatcher<ImagePreview>::canceled, this, &MainWindow::previewCanceled);
+-    connect(ui->compressionMode_ComboBox, &QComboBox::currentIndexChanged, ui->compression_StackedWidget, &QStackedWidget::setCurrentIndex);
+-    connect(ui->compressionMode_ComboBox, &QComboBox::currentIndexChanged, this, &MainWindow::onCompressionModeChanged);
+-    connect(ui->maxOutputSize_SpinBox, &QSpinBox::valueChanged, this, &MainWindow::onMaxOutputSizeChanged);
+-    connect(ui->maxOutputSizeUnit_ComboBox, &QComboBox::currentIndexChanged, this, &MainWindow::onMaxOutputSizeUnitChanged);
++    connect(ui->compressionMode_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), ui->compression_StackedWidget, &QStackedWidget::setCurrentIndex);
++    connect(ui->compressionMode_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::onCompressionModeChanged);
++    connect(ui->maxOutputSize_SpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &MainWindow::onMaxOutputSizeChanged);
++    connect(ui->maxOutputSizeUnit_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::onMaxOutputSizeUnitChanged);
+ 
+     connect(ui->actionAdvanced_import, &QAction::triggered, this, &MainWindow::onAdvancedImportTriggered);
+ 
+     connect(ui->moveOriginalFile_CheckBox, &QCheckBox::toggled, this, &MainWindow::moveOriginalFileToggled);
+-    connect(ui->moveOriginalFile_ComboBox, &QComboBox::currentIndexChanged, this, &MainWindow::moveOriginalFileDestinationChanged);
++    connect(ui->moveOriginalFile_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::moveOriginalFileDestinationChanged);
+ 
+     connect(ui->JPEGQuality_Slider, &QSlider::valueChanged, this, &MainWindow::onJPEGQualityValueChanged);
+-    connect(ui->JPEGQuality_SpinBox, &QSpinBox::valueChanged, this, &MainWindow::onJPEGQualityValueChanged);
++    connect(ui->JPEGQuality_SpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &MainWindow::onJPEGQualityValueChanged);
+     connect(ui->PNGQuality_Slider, &QSlider::valueChanged, this, &MainWindow::onPNGQualityValueChanged);
+-    connect(ui->PNGQuality_SpinBox, &QSpinBox::valueChanged, this, &MainWindow::onPNGQualityValueChanged);
++    connect(ui->PNGQuality_SpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &MainWindow::onPNGQualityValueChanged);
+     connect(ui->WebPQuality_Slider, &QSlider::valueChanged, this, &MainWindow::onWebPQualityValueChanged);
+-    connect(ui->WebPQuality_SpinBox, &QSpinBox::valueChanged, this, &MainWindow::onWebPQualityValueChanged);
+-    connect(ui->JPEGChromaSubsampling_ComboBox, &QComboBox::currentIndexChanged, this, &MainWindow::onJPEGChromaSubsamplingChanged);
++    connect(ui->WebPQuality_SpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &MainWindow::onWebPQualityValueChanged);
++    connect(ui->JPEGChromaSubsampling_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::onJPEGChromaSubsamplingChanged);
+     connect(ui->JPEGProgressive_CheckBox, &QCheckBox::toggled, this, &MainWindow::onJPEGProgressiveToggled);
+     connect(ui->PNGOptimizationLevel_Slider, &QSlider::valueChanged, this, &MainWindow::onPNGOptimizationLevelChanged);
+-    connect(ui->PNGOptimizationLevel_SpinBox, &QSpinBox::valueChanged, this, &MainWindow::onPNGOptimizationLevelChanged);
++    connect(ui->PNGOptimizationLevel_SpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &MainWindow::onPNGOptimizationLevelChanged);
+ 
+-    connect(ui->TIFFCompressionMethod_ComboBox, &QComboBox::currentIndexChanged, this, &MainWindow::onTIFFCompressionMethodChanged);
++    connect(ui->TIFFCompressionMethod_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::onTIFFCompressionMethodChanged);
+     connect(ui->TIFFDeflateLevel_Slider, &QSlider::valueChanged, this, &MainWindow::onTIFFDeflateLevelChanged);
+     this->readSettings();
+ 
+-    connect(ui->format_ComboBox, &QComboBox::currentIndexChanged, this, &MainWindow::outputFormatIndexChanged);
++    connect(ui->format_ComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::outputFormatIndexChanged);
+ 
+     this->on_keepAspectRatio_CheckBox_toggled(ui->keepAspectRatio_CheckBox->isChecked());
+     this->on_doNotEnlarge_CheckBox_toggled(ui->doNotEnlarge_CheckBox->isChecked());
+@@ -147,11 +146,9 @@
+     ui->actionToolbarHide->setChecked(ui->toolBar->isHidden());
+ 
+     if (QSettings().value("preferences/general/send_usage_reports", true).toBool()) {
+-        if (!QSettings().contains("access_token")) {
+-            this->networkOperations->requestToken();
+-        } else {
+-            this->networkOperations->updateSystemInfo();
+-        }
++        // Usage reporting (NetworkOperations) has been removed in this build; the
++        // preference is kept so existing settings files stay compatible.
++        qInfo() << "Usage reporting is disabled in this build";
+     }
+ 
+     QCommandLineParser commandLineParser;
+@@ -159,8 +156,6 @@
+     if (const QStringList args = commandLineParser.positionalArguments(); !args.isEmpty()) {
+         this->importFromArgs(args);
+     }
+-
+-    QImageReader::setAllocationLimit(1024);
+ }
+ 
+ MainWindow::~MainWindow()
+@@ -174,7 +169,6 @@
+     delete aboutDialog;
+     delete keepDatesButtonGroup;
+     delete compressionWatcher;
+-    delete networkOperations;
+     delete previewWatcher;
+     delete trayIcon;
+     delete translator;
+@@ -625,7 +619,11 @@
+         int maxThreads = QSettings().value("preferences/general/multithreading_max_threads", QThread::idealThreadCount()).toInt();
+         QThreadPool::globalInstance()->setMaxThreadCount(maxThreads);
+     }
+-    QThreadPool::globalInstance()->setThreadPriority(QSettings().value("preferences/general/threads_priority", QThread::NormalPriority).value<QThread::Priority>());
++#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
++    // Qt 5 has no QThreadPool::setThreadPriority(); priority is inherited instead.
++    QThreadPool::globalInstance()->setThreadPriority(static_cast<QThread::Priority>(
++            QSettings().value("preferences/general/threads_priority", QThread::NormalPriority).toInt()));
++#endif
+ 
+     this->compressionWatcher = new QFutureWatcher<void>();
+     connect(this->compressionWatcher, &QFutureWatcherBase::finished, this, &MainWindow::compressionFinished);
+@@ -814,10 +812,6 @@
+     compressionSummary.totalCompressedSize = this->cImageModel->compressedItemsSize();
+     compressionSummary.elapsedTime = compressionTimer.isValid() ? compressionTimer.elapsed() : 0;
+ 
+-    if (QSettings().value("preferences/general/send_usage_reports", true).toBool()) {
+-        this->networkOperations->sendUsageReport(compressionSummary);
+-    }
+-
+     qInfo() << "Compression ended successfully.\nTotal images:" << compressionSummary.totalImages
+             << "\nUncompressed size:" << toHumanSize(compressionSummary.totalUncompressedSize)
+             << "\nCompressed size:" << toHumanSize(compressionSummary.totalCompressedSize)
+diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.h b/src/MainWindow.h
+--- a/src/MainWindow.h	2025-05-07 16:25:34.000000000 +0800
++++ b/src/MainWindow.h	2026-11-26 16:26:29.465224295 +0800
+@@ -2,6 +2,7 @@
+ #define MAINWINDOW_H
+ 
+ #include <QButtonGroup>
++#include <QElapsedTimer>
+ #include <QFutureWatcher>
+ #include <QItemSelection>
+ #include <QMainWindow>
+@@ -12,7 +13,6 @@
+ 
+ #include "models/CImageSortFilterProxyModel.h"
+ #include "models/CImageTreeModel.h"
+-#include "network/NetworkOperations.h"
+ 
+ QT_BEGIN_NAMESPACE
+ namespace Ui {
+@@ -121,7 +121,6 @@
+     QMenu* trayIconContextMenu {};
+     QButtonGroup* keepDatesButtonGroup;
+     CompressionSummary compressionSummary;
+-    NetworkOperations* networkOperations;
+     QElapsedTimer compressionTimer;
+     CImageSortFilterProxyModel* proxyModel;
+     long long selectedCount = 0;
+diff -ruN -x '*.ts' -x '*.svg' a/src/models/CImage.cpp b/src/models/CImage.cpp
+--- a/src/models/CImage.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/models/CImage.cpp	2026-11-26 16:24:10.873041868 +0800
+@@ -3,6 +3,9 @@
+ 
+ #include "./exceptions/ImageNotSupportedException.h"
+ #include "exceptions/ImageTooBigException.h"
++#include "utils/Utils.h"
++#include <QDateTime>
++#include <QDebug>
+ #include <QDir>
+ #include <QImageReader>
+ #include <QStandardPaths>
+@@ -21,7 +24,7 @@
+         this->format = "jpg";
+     }
+ 
+-    if (!supportedFormats.contains(format)) {
++    if (!supportedFormats.contains(format.toUtf8())) {
+         delete imageReader;
+         throw ImageNotSupportedException();
+     }
+@@ -42,6 +45,14 @@
+     this->width = imageSize.width();
+     this->height = imageSize.height();
+ 
++    // Qt 6 capped decoded image memory via QImageReader::setAllocationLimit(); Qt 5.12 has
++    // no such API, so enforce an equivalent 1 GiB budget from the header dimensions.
++    const qint64 decodedBytes = static_cast<qint64>(this->width) * static_cast<qint64>(this->height) * 4;
++    if (decodedBytes > 1024LL * 1024 * 1024) {
++        delete imageReader;
++        throw ImageTooBigException();
++    }
++
+     this->compressedWidth = this->width;
+     this->compressedHeight = this->height;
+ 
+@@ -237,7 +248,7 @@
+             if (compressionOptions.sameFolderAsInput) {
+                 bool trashingResult = false;
+                 if (!compressionOptions.moveOriginalFile || (compressionOptions.moveOriginalFile && compressionOptions.moveOriginalFileDestination == 0)) {
+-                    trashingResult = QFile::moveToTrash(outputFullPath);
++                    trashingResult = moveFileToTrash(outputFullPath);
+                 }
+                 // Can fail in some conditions, like NAS storages. Fallback to normal remove.
+                 if (!trashingResult) {
+@@ -267,7 +278,7 @@
+             return false;
+         }
+         if (compressionOptions.moveOriginalFile && !inputAlreadyMoved) {
+-            if (compressionOptions.moveOriginalFileDestination == 0 && !QFile::moveToTrash(this->getFullPath())) {
++            if (compressionOptions.moveOriginalFileDestination == 0 && !moveFileToTrash(this->getFullPath())) {
+                 qWarning() << "Cannot move to trash file" << this->getFullPath();
+                 this->additionalInfo = QIODevice::tr("Cannot move original file to trash, check your permissions");
+             } else if (compressionOptions.moveOriginalFileDestination == 1 && !QFile::remove(this->getFullPath())) {
+diff -ruN -x '*.ts' -x '*.svg' a/src/models/CImageTreeModel.cpp b/src/models/CImageTreeModel.cpp
+--- a/src/models/CImageTreeModel.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/models/CImageTreeModel.cpp	2026-11-26 16:24:10.873041868 +0800
+@@ -161,15 +161,15 @@
+     if (role == Qt::DecorationRole && index.column() == CImageColumns::NAME_COLUMN) {
+         CImageStatus status = item->getCImage()->getStatus();
+         if (status == CImageStatus::COMPRESSED) {
+-            return QIcon(":/icons/compression_statuses/compressed.svg").pixmap(16, 16);
++            return QIcon(":/icons/compression_statuses/compressed.png").pixmap(16, 16);
+         } else if (status == CImageStatus::ERROR) {
+-            return QIcon(":/icons/compression_statuses/error.svg").pixmap(16, 16);
++            return QIcon(":/icons/compression_statuses/error.png").pixmap(16, 16);
+         } else if (status == CImageStatus::WARNING) {
+-            return QIcon(":/icons/compression_statuses/warning.svg").pixmap(16, 16);
++            return QIcon(":/icons/compression_statuses/warning.png").pixmap(16, 16);
+         } else if (status == CImageStatus::COMPRESSING) {
+-            return QIcon(":/icons/compression_statuses/compressing.svg").pixmap(16, 16);
++            return QIcon(":/icons/compression_statuses/compressing.png").pixmap(16, 16);
+         } else {
+-            return QIcon(":/icons/compression_statuses/uncompressed.svg").pixmap(16, 16);
++            return QIcon(":/icons/compression_statuses/uncompressed.png").pixmap(16, 16);
+         }
+     }
+ 
+diff -ruN -x '*.ts' -x '*.svg' a/src/network/NetworkOperations.cpp b/src/network/NetworkOperations.cpp
+--- a/src/network/NetworkOperations.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/network/NetworkOperations.cpp	1970-01-01 08:00:00.000000000 +0800
+@@ -1,115 +0,0 @@
+-#include "NetworkOperations.h"
+-#include "utils/Utils.h"
+-#include <QFile>
+-#include <QJsonDocument>
+-#include <QJsonObject>
+-#include <QNetworkReply>
+-#include <QNetworkRequest>
+-#include <QObject>
+-#include <QSettings>
+-#include <QStandardPaths>
+-
+-NetworkOperations::NetworkOperations()
+-{
+-    QSettings settings;
+-    this->networkClient = new QNetworkAccessManager();
+-    this->baseEndpoint = getBaseEndpoint();
+-}
+-
+-NetworkOperations::~NetworkOperations()
+-{
+-    delete networkClient;
+-}
+-
+-QString NetworkOperations::getBaseEndpoint()
+-{
+-    QFile endpointFile(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/api_endpoint");
+-    if (endpointFile.exists() && endpointFile.open(QFile::ReadOnly)) {
+-        return endpointFile.readLine();
+-    }
+-    return "https://caesium.app/api/v1";
+-}
+-
+-void NetworkOperations::sendUsageReport(CompressionSummary compressionSummary)
+-{
+-    QSettings settings;
+-    if (!settings.contains("access_token")) {
+-        return;
+-    }
+-    QJsonObject requestData {
+-        { "uuid", settings.value("uuid").toString() },
+-        { "totalFiles", (double)compressionSummary.totalImages },
+-        { "uncompressedSize", compressionSummary.totalUncompressedSize },
+-        { "compressedSize", compressionSummary.totalCompressedSize },
+-        { "elapsedTime", compressionSummary.elapsedTime },
+-        { "compressionOptions", QString(QJsonDocument(getCompressionOptionsAsJSON()).toJson(QJsonDocument::Compact)) }
+-    };
+-    QNetworkRequest request(QUrl(this->baseEndpoint + "/desktopInstallation/summary"));
+-    QString bearerToken = "Bearer " + settings.value("access_token").toString();
+-    request.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("application/json"));
+-    request.setRawHeader("Authorization", bearerToken.toUtf8());
+-    request.setRawHeader("Accept", "application/json");
+-    QNetworkReply* reply = this->networkClient->post(request, QJsonDocument(requestData).toJson(QJsonDocument::Compact));
+-    connect(reply, &QNetworkReply::finished, [reply]() {
+-        if (reply->error() != QNetworkReply::NoError) {
+-            qWarning() << "Usage report request failed. Error:" << reply->errorString() << "- Reply:" << reply->readAll();
+-        } else {
+-            qInfo() << "Usage report sent successfully";
+-        }
+-        reply->deleteLater();
+-    });
+-}
+-
+-void NetworkOperations::requestToken()
+-{
+-    QSettings settings;
+-    if (!settings.contains("uuid")) {
+-        return;
+-    }
+-    QString uuid = settings.value("uuid").toString();
+-    if (uuid.isEmpty()) {
+-        return;
+-    }
+-    QNetworkRequest request(QUrl(this->baseEndpoint + "/tokens/create"));
+-    request.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("application/json"));
+-    QJsonObject requestData = getSystemData();
+-
+-    QNetworkReply* reply = this->networkClient->post(request, QJsonDocument(requestData).toJson(QJsonDocument::Compact));
+-    connect(reply, &QNetworkReply::finished, [reply]() {
+-        if (reply->error() == QNetworkReply::NoError) {
+-            QJsonParseError parseError;
+-            QSettings sts;
+-            QJsonDocument dataJsonDocument = QJsonDocument::fromJson(reply->readAll(), &parseError);
+-            if (parseError.error != QJsonParseError::NoError) {
+-                qWarning() << "Cannot parse request token response. Error:" << parseError.errorString();
+-            } else {
+-                QString token = dataJsonDocument.object().value("token").toString();
+-                qInfo() << "Access token:" << token;
+-                sts.setValue("access_token", token);
+-            }
+-        } else {
+-            qWarning() << "Access token request failed. Error:" << reply->errorString() << "- Reply:" << reply->readAll();
+-        }
+-        reply->deleteLater();
+-    });
+-}
+-
+-void NetworkOperations::updateSystemInfo()
+-{
+-    QSettings settings;
+-    QJsonObject requestData = getSystemData();
+-    QNetworkRequest request(QUrl(this->baseEndpoint + "/desktopInstallation/refresh"));
+-    QString bearerToken = "Bearer " + settings.value("access_token").toString();
+-    request.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("application/json"));
+-    request.setRawHeader("Accept", "application/json");
+-    request.setRawHeader("Authorization", bearerToken.toUtf8());
+-    QNetworkReply* reply = this->networkClient->post(request, QJsonDocument(requestData).toJson(QJsonDocument::Compact));
+-    connect(reply, &QNetworkReply::finished, [reply]() {
+-        if (reply->error() != QNetworkReply::NoError) {
+-            qWarning() << "Sys info update failed. Error:" << reply->errorString() << "- Reply:" << reply->readAll();
+-        } else {
+-            qInfo() << "Sys info updated successfully";
+-        }
+-        reply->deleteLater();
+-    });
+-}
+diff -ruN -x '*.ts' -x '*.svg' a/src/network/NetworkOperations.h b/src/network/NetworkOperations.h
+--- a/src/network/NetworkOperations.h	2025-05-07 16:25:34.000000000 +0800
++++ b/src/network/NetworkOperations.h	1970-01-01 08:00:00.000000000 +0800
+@@ -1,25 +0,0 @@
+-#ifndef CAESIUM_IMAGE_COMPRESSOR_NETWORKOPERATIONS_H
+-#define CAESIUM_IMAGE_COMPRESSOR_NETWORKOPERATIONS_H
+-
+-#include "utils/Utils.h"
+-#include <QNetworkAccessManager>
+-#include <QString>
+-
+-class NetworkOperations : public QObject {
+-    Q_OBJECT
+-private:
+-    QNetworkAccessManager* networkClient;
+-    QString baseEndpoint;
+-
+-    static QString getBaseEndpoint();
+-
+-public:
+-    NetworkOperations();
+-
+-    void requestToken();
+-    void updateSystemInfo();
+-    void sendUsageReport(CompressionSummary compressionSummary);
+-    ~NetworkOperations() override;
+-};
+-
+-#endif // CAESIUM_IMAGE_COMPRESSOR_NETWORKOPERATIONS_H
+diff -ruN -x '*.ts' -x '*.svg' a/src/services/Importer.cpp b/src/services/Importer.cpp
+--- a/src/services/Importer.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/services/Importer.cpp	2026-11-26 16:24:10.873041868 +0800
+@@ -1,6 +1,7 @@
+ #include "Importer.h"
+ 
+ #include <QDirIterator>
++#include <QRegularExpression>
+ #include <models/CImage.h>
+ 
+ QString Importer::getRootFolder(QList<QString> folderMap)
+diff -ruN -x '*.ts' -x '*.svg' a/src/utils/LanguageManager.cpp b/src/utils/LanguageManager.cpp
+--- a/src/utils/LanguageManager.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/utils/LanguageManager.cpp	2026-11-26 16:24:10.873041868 +0800
+@@ -56,10 +56,10 @@
+ 
+ QString LanguageManager::getLocaleFromPreferences(const QVariant& preference)
+ {
+-    if (preference.typeId() == QVariant::Int || preference.typeId() == QVariant::LongLong) {
++    if (preference.type() == QVariant::Int || preference.type() == QVariant::LongLong) {
+         int localeIndex = preference.toInt();
+         return LanguageManager::getTranslations().at(localeIndex).locale;
+-    } else if (preference.typeId() == QVariant::String) {
++    } else if (preference.type() == QVariant::String) {
+         return preference.toString();
+     } else {
+         return "default";
+diff -ruN -x '*.ts' -x '*.svg' a/src/utils/Logger.cpp b/src/utils/Logger.cpp
+--- a/src/utils/Logger.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/utils/Logger.cpp	2026-11-26 16:24:10.873041868 +0800
+@@ -1,5 +1,6 @@
+ #include "Logger.h"
+ #include <QDateTime>
++#include <QTextStream>
+ #include <QDir>
+ #include <QStandardPaths>
+ 
+@@ -39,6 +40,9 @@
+     logToFile = logFile.open(QIODevice::WriteOnly | QIODevice::Append) && logToFile;
+     if (logToFile) {
+         QTextStream log(&logFile);
++#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
++        log.setCodec("UTF-8");
++#endif
+         log << message;
+         logFile.close();
+     } else {
+diff -ruN -x '*.ts' -x '*.svg' a/src/utils/Utils.cpp b/src/utils/Utils.cpp
+--- a/src/utils/Utils.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/utils/Utils.cpp	2026-11-26 16:24:10.873041868 +0800
+@@ -140,6 +140,23 @@
+     QDesktopServices::openUrl(QUrl::fromLocalFile(dirPath));
+ }
+ 
++bool moveFileToTrash(const QString& filePath)
++{
++    // Qt 5.15+ provides QFile::moveToTrash(); on Qt 5.12 delegate to the freedesktop
++    // implementation shipped with GLib (gio trash), which honours XDG trash dirs.
++    QProcess process;
++    process.start("gio", QStringList() << "trash" << filePath);
++    if (!process.waitForStarted(3000)) {
++        return false;
++    }
++    if (!process.waitForFinished(10000)) {
++        process.kill();
++        process.waitForFinished(1000);
++        return false;
++    }
++    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
++}
++
+ QJsonObject getSystemData()
+ {
+     QSettings settings;
+diff -ruN -x '*.ts' -x '*.svg' a/src/utils/Utils.h b/src/utils/Utils.h
+--- a/src/utils/Utils.h	2025-05-07 16:25:34.000000000 +0800
++++ b/src/utils/Utils.h	2026-11-26 16:24:10.873041868 +0800
+@@ -2,6 +2,7 @@
+ #define UTILS_H
+ 
+ #include <QCryptographicHash>
++#include <QDateTime>
+ #include <QFileInfo>
+ #include <QImageReader>
+ #include <QJsonObject>
+@@ -162,6 +163,7 @@
+ bool isRotatedByMetadata(const QImageReader* reader);
+ void showFileInNativeFileManager(const QString& filePath, const QString& fallbackDirectory);
+ void showDirectoryInNativeFileManager(const QString& dirPath);
++bool moveFileToTrash(const QString& filePath);
+ QJsonObject getSystemData();
+ QJsonObject getCompressionOptionsAsJSON();
+ QString getCompressionOptionsHash();
+diff -ruN -x '*.ts' -x '*.svg' a/src/widgets/QCaesiumMessageBox.cpp b/src/widgets/QCaesiumMessageBox.cpp
+--- a/src/widgets/QCaesiumMessageBox.cpp	2025-05-07 16:25:34.000000000 +0800
++++ b/src/widgets/QCaesiumMessageBox.cpp	2026-11-26 16:24:10.873041868 +0800
+@@ -1,5 +1,7 @@
+ #include "QCaesiumMessageBox.h"
+ 
++#include <cmath>
++
+ QCaesiumMessageBox::QCaesiumMessageBox(QWidget* parent)
+     : QMessageBox(parent)
+ {
+diff -ruN -x '*.ts' -x '*.svg' a/src/widgets/QZoomGraphicsView.h b/src/widgets/QZoomGraphicsView.h
+--- a/src/widgets/QZoomGraphicsView.h	2025-05-07 16:25:34.000000000 +0800
++++ b/src/widgets/QZoomGraphicsView.h	2026-11-26 16:24:10.873041868 +0800
+@@ -9,6 +9,8 @@
+ #include <QMovie>
+ #include <QWheelEvent>
+ 
++Q_DECLARE_METATYPE(QWheelEvent*)
++
+ class QZoomGraphicsView : public QGraphicsView {
+     Q_OBJECT
+ 
+diff -ruN -x '*.ts' -x '*.svg' a/views/AboutDialog.ui b/views/AboutDialog.ui
+--- a/views/AboutDialog.ui	2025-05-07 16:25:34.000000000 +0800
++++ b/views/AboutDialog.ui	2026-11-26 16:24:10.873041868 +0800
+@@ -186,10 +186,10 @@
+    <item>
+     <widget class="QLabel" name="website_Label">
+      <property name="text">
+-      <string notr="true">[saerasoft.com/caesium](https://saerasoft.com/caesium)</string>
++      <string notr="true">&lt;a href="https://saerasoft.com/caesium"&gt;saerasoft.com/caesium&lt;/a&gt;</string>
+      </property>
+      <property name="textFormat">
+-      <enum>Qt::MarkdownText</enum>
++      <enum>Qt::RichText</enum>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+diff -ruN -x '*.ts' -x '*.svg' a/views/AdvancedImportDialog.ui b/views/AdvancedImportDialog.ui
+--- a/views/AdvancedImportDialog.ui	2025-05-07 16:25:34.000000000 +0800
++++ b/views/AdvancedImportDialog.ui	2026-11-26 16:24:10.873041868 +0800
+@@ -52,7 +52,7 @@
+        </property>
+        <property name="icon">
+         <iconset resource="../resources/resources.qrc">
+-         <normaloff>:/icons/ui/remove.svg</normaloff>:/icons/ui/remove.svg</iconset>
++         <normaloff>:/icons/ui/remove.png</normaloff>:/icons/ui/remove.png</iconset>
+        </property>
+        <property name="toolButtonStyle">
+         <enum>Qt::ToolButtonTextBesideIcon</enum>
+@@ -73,7 +73,7 @@
+        </property>
+        <property name="icon">
+         <iconset resource="../resources/resources.qrc">
+-         <normaloff>:/icons/ui/add_files.svg</normaloff>:/icons/ui/add_files.svg</iconset>
++         <normaloff>:/icons/ui/add_files.png</normaloff>:/icons/ui/add_files.png</iconset>
+        </property>
+        <property name="popupMode">
+         <enum>QToolButton::InstantPopup</enum>
+diff -ruN -x '*.ts' -x '*.svg' a/views/MainWindow.ui b/views/MainWindow.ui
+--- a/views/MainWindow.ui	2025-05-07 16:25:34.000000000 +0800
++++ b/views/MainWindow.ui	2026-11-26 16:24:10.873041868 +0800
+@@ -142,7 +142,7 @@
+               </property>
+               <property name="icon">
+                <iconset resource="../resources/resources.qrc">
+-                <normaloff>:/icons/ui/add_files.svg</normaloff>:/icons/ui/add_files.svg</iconset>
++                <normaloff>:/icons/ui/add_files.png</normaloff>:/icons/ui/add_files.png</iconset>
+               </property>
+               <property name="iconSize">
+                <size>
+@@ -162,7 +162,7 @@
+               </property>
+               <property name="icon">
+                <iconset resource="../resources/resources.qrc">
+-                <normaloff>:/icons/ui/remove.svg</normaloff>:/icons/ui/remove.svg</iconset>
++                <normaloff>:/icons/ui/remove.png</normaloff>:/icons/ui/remove.png</iconset>
+               </property>
+               <property name="iconSize">
+                <size>
+@@ -195,7 +195,7 @@
+               </property>
+               <property name="icon">
+                <iconset resource="../resources/resources.qrc">
+-                <normaloff>:/icons/ui/compress.svg</normaloff>:/icons/ui/compress.svg</iconset>
++                <normaloff>:/icons/ui/compress.png</normaloff>:/icons/ui/compress.png</iconset>
+               </property>
+               <property name="popupMode">
+                <enum>QToolButton::ToolButtonPopupMode::MenuButtonPopup</enum>
+@@ -1602,8 +1602,8 @@
+            </property>
+            <property name="icon">
+             <iconset resource="../resources/resources.qrc">
+-             <normaloff>:/icons/compression_statuses/warning.svg</normaloff>
+-             <disabledoff>:/icons/compression_statuses/warning.svg</disabledoff>:/icons/compression_statuses/warning.svg</iconset>
++             <normaloff>:/icons/compression_statuses/warning.png</normaloff>
++             <disabledoff>:/icons/compression_statuses/warning.png</disabledoff>:/icons/compression_statuses/warning.png</iconset>
+            </property>
+            <property name="flat">
+             <bool>true</bool>
+@@ -1707,7 +1707,7 @@
+            <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+           </property>
+           <property name="renderHints">
+-           <set>QPainter::RenderHint::Antialiasing|QPainter::RenderHint::LosslessImageRendering|QPainter::RenderHint::SmoothPixmapTransform|QPainter::RenderHint::TextAntialiasing</set>
++           <set>QPainter::RenderHint::Antialiasing|QPainter::RenderHint::SmoothPixmapTransform|QPainter::RenderHint::TextAntialiasing</set>
+           </property>
+           <property name="dragMode">
+            <enum>QGraphicsView::DragMode::ScrollHandDrag</enum>
+@@ -1741,7 +1741,7 @@
+            <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+           </property>
+           <property name="renderHints">
+-           <set>QPainter::RenderHint::LosslessImageRendering|QPainter::RenderHint::TextAntialiasing</set>
++           <set>QPainter::RenderHint::TextAntialiasing</set>
+           </property>
+           <property name="dragMode">
+            <enum>QGraphicsView::DragMode::ScrollHandDrag</enum>
+@@ -1890,7 +1890,7 @@
+   <action name="actionAdd_files">
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/add_files.svg</normaloff>:/icons/ui/add_files.svg</iconset>
++     <normaloff>:/icons/ui/add_files.png</normaloff>:/icons/ui/add_files.png</iconset>
+    </property>
+    <property name="text">
+     <string>Add files...</string>
+@@ -1902,7 +1902,7 @@
+   <action name="actionAdd_folder">
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/add_folder.svg</normaloff>:/icons/ui/add_folder.svg</iconset>
++     <normaloff>:/icons/ui/add_folder.png</normaloff>:/icons/ui/add_folder.png</iconset>
+    </property>
+    <property name="text">
+     <string>Add folder...</string>
+@@ -1925,7 +1925,7 @@
+    </property>
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/remove.svg</normaloff>:/icons/ui/remove.svg</iconset>
++     <normaloff>:/icons/ui/remove.png</normaloff>:/icons/ui/remove.png</iconset>
+    </property>
+    <property name="text">
+     <string>Remove</string>
+@@ -1948,7 +1948,7 @@
+    </property>
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/trash.svg</normaloff>:/icons/ui/trash.svg</iconset>
++     <normaloff>:/icons/ui/trash.png</normaloff>:/icons/ui/trash.png</iconset>
+    </property>
+    <property name="text">
+     <string>Clear</string>
+@@ -1968,7 +1968,7 @@
+   <action name="actionPreferences">
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/settings.svg</normaloff>:/icons/ui/settings.svg</iconset>
++     <normaloff>:/icons/ui/settings.png</normaloff>:/icons/ui/settings.png</iconset>
+    </property>
+    <property name="text">
+     <string>Preferences...</string>
+@@ -1990,7 +1990,7 @@
+   <action name="actionDonate">
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/donate.svg</normaloff>:/icons/ui/donate.svg</iconset>
++     <normaloff>:/icons/ui/donate.png</normaloff>:/icons/ui/donate.png</iconset>
+    </property>
+    <property name="text">
+     <string>Donate</string>
+@@ -2002,7 +2002,7 @@
+    </property>
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/compress.svg</normaloff>:/icons/ui/compress.svg</iconset>
++     <normaloff>:/icons/ui/compress.png</normaloff>:/icons/ui/compress.png</iconset>
+    </property>
+    <property name="text">
+     <string>Compress</string>
+@@ -2057,7 +2057,7 @@
+    </property>
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/preview.svg</normaloff>:/icons/ui/preview.svg</iconset>
++     <normaloff>:/icons/ui/preview.png</normaloff>:/icons/ui/preview.png</iconset>
+    </property>
+    <property name="text">
+     <string>Preview</string>
+diff -ruN -x '*.ts' -x '*.svg' a/views/PreferencesDialog.ui b/views/PreferencesDialog.ui
+--- a/views/PreferencesDialog.ui	2025-05-07 16:25:34.000000000 +0800
++++ b/views/PreferencesDialog.ui	2026-11-26 16:24:10.873041868 +0800
+@@ -255,7 +255,7 @@
+          <string>This option applies when using command line or by dropping files to the application icon</string>
+         </property>
+         <property name="pixmap">
+-         <pixmap resource="../resources/resources.qrc">:/icons/ui/help.svg</pixmap>
++         <pixmap resource="../resources/resources.qrc">:/icons/ui/help.png</pixmap>
+         </property>
+         <property name="scaledContents">
+          <bool>true</bool>
+@@ -472,7 +472,7 @@
+         <string/>
+        </property>
+        <property name="pixmap">
+-        <pixmap resource="../resources/resources.qrc">:/icons/compression_statuses/warning.svg</pixmap>
++        <pixmap resource="../resources/resources.qrc">:/icons/compression_statuses/warning.png</pixmap>
+        </property>
+        <property name="scaledContents">
+         <bool>true</bool>
