@@ -17,13 +17,19 @@ Caesium Image Compressor 2.8.5 的 arm64 deb 包，编译时把 Qt 依赖降到�
 从 Releases 下载 deb：
 
 ```bash
-sudo dpkg -i caesium-image-compressor_2.8.5-3_arm64.deb
+sudo dpkg -i caesium-image-compressor_2.8.5-4_arm64.deb
 ```
 
 装完在开始菜单里搜 Caesium。
 
 运行需要 glibc 2.29+、Qt 5.12.2+。WebP 支持依赖 `qt5-image-formats-plugins`，
 多数发行版默认已装。
+
+## 源码
+
+`upstream/` 是上游 v2.8.5 tag 的原始源码，从 Lymphatus/caesium-image-compressor 拉下来原样放进去的，
+一个字没改，方便跟补丁对照。改动都在 `patches/`，`scripts/build.sh` 会把它打到 `upstream/` 的副本上，
+不碰原目录。
 
 ## 自己编译
 
@@ -47,7 +53,7 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y
 ./scripts/build.sh
 ```
 
-产物在 `dist/`。脚本会自己下载上游 v2.8.5 源码和 libcaesium 0.17.4 的 crate。
+产物在 `dist/`。脚本用的是仓库里的源码，只会去下载 libcaesium 0.17.4 的 crate。
 
 ## 改了什么
 

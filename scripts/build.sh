@@ -4,7 +4,7 @@
 #
 #   ./scripts/build.sh
 #
-# 流程：下载上游源码 -> 打 Qt5 补丁 -> SVG 图标转 PNG -> 编译 libcaesium
+# 流程：复制仓库内的上游源码 -> 打 Qt5 补丁 -> SVG 图标转 PNG -> 编译 libcaesium
 #       -> 编主程序 -> 组装 deb
 #
 # 可用环境变量：
@@ -43,12 +43,10 @@ python3 -c "import cairosvg" 2>/dev/null || { echo "缺少 cairosvg：pip3 insta
 
 # 1. 上游源码 + 补丁 + 图标
 if [ ! -f "$SRC/.patched" ]; then
-    echo "==> 下载上游 v$VERSION"
+    echo "==> 复制上游 v$VERSION 源码"
     rm -rf "$SRC"
     mkdir -p "$SRC"
-    curl -fL --retry 3 -o "$BUILD/upstream.tar.gz" \
-        "https://codeload.github.com/Lymphatus/caesium-image-compressor/tar.gz/refs/tags/v$VERSION"
-    tar xzf "$BUILD/upstream.tar.gz" -C "$SRC" --strip-components=1
+    cp -a "$ROOT/upstream/." "$SRC/"
 
     echo "==> 应用 Qt5 补丁"
     patch -p1 -d "$SRC" --no-backup-if-mismatch \

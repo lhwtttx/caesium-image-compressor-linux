@@ -1,0 +1,2 @@
+# Qt 的 .ts 是翻译文件（XML），GitHub 会当 TypeScript 算进语言统计
+upstream/resources/i18n/*.ts linguist-detectable=false
