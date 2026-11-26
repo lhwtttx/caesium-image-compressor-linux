@@ -17,7 +17,7 @@ Caesium Image Compressor 2.8.5 的 arm64 deb 包，编译时把 Qt 依赖降到�
 从 Releases 下载 deb：
 
 ```bash
-sudo dpkg -i caesium-image-compressor_2.8.5-1_arm64.deb
+sudo dpkg -i caesium-image-compressor_2.8.5-3_arm64.deb
 ```
 
 装完在开始菜单里搜 Caesium。
@@ -62,7 +62,6 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y
 ## 已知问题
 
 - 不跟随系统暗色主题，程序里可以手动切
-- 窗口分隔条位置不保存（Qt 5 序列化 `QList<int>` 的兼容问题），启动会打一条警告，不影响使用
 - 图标是 256px 位图，高分屏下略糊
 
 ## 许可
