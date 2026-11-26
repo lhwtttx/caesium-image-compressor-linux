@@ -16,7 +16,7 @@
 set -euo pipefail
 
 VERSION=2.8.5
-REVISION=2
+REVISION=3
 LIBCAESIUM_VERSION=0.17.4
 PKG=caesium-image-compressor
 ARCH=arm64

@@ -1064,3 +1064,71 @@ diff -ruN -x '*.ts' -x '*.svg' a/views/PreferencesDialog.ui b/views/PreferencesD
         </property>
         <property name="scaledContents">
          <bool>true</bool>
+diff -ruN -x '*.ts' -x '*.svg' a/src/delegates/HtmlDelegate.cpp b/src/delegates/HtmlDelegate.cpp
+--- a/src/delegates/HtmlDelegate.cpp	2026-11-26 17:06:12.986276173 +0800
++++ b/src/delegates/HtmlDelegate.cpp	2026-11-26 17:06:07.114373853 +0800
+@@ -1,10 +1,24 @@
+ #include "HtmlDelegate.h"
+ #include <QAbstractTextDocumentLayout>
+ #include <QApplication>
++#include <QFontMetrics>
+ #include <QPainter>
+ #include <QSize>
+ #include <QStyleOptionViewItem>
+ #include <QTextDocument>
++#include <QtMath>
++
++namespace {
++// 行高在文本高度之外留出的余量，避免中文字体的下降部贴边被裁
++constexpr int kRowPadding = 6;
++
++void setupDocument(QTextDocument& doc, const QStyleOptionViewItem& option)
++{
++    doc.setDocumentMargin(0);
++    doc.setDefaultFont(option.font);
++    doc.setHtml(option.text);
++}
++}
+ 
+ void HtmlDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+ {
+@@ -14,18 +28,21 @@
+     QStyle* style = optionV.widget ? optionV.widget->style() : QApplication::style();
+ 
+     QTextDocument doc;
+-    doc.setHtml(optionV.text);
++    setupDocument(doc, optionV);
+ 
+     // Painting item without text
+     optionV.text = QString();
+     style->drawControl(QStyle::CE_ItemViewItem, &optionV, painter, optionV.widget);
+ 
++    const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &optionV);
++    const int textHeight = static_cast<int>(qCeil(doc.size().height()));
++    const int offsetY = qMax(0, (textRect.height() - textHeight) / 2);
++
+     QAbstractTextDocumentLayout::PaintContext ctx;
+-    QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &optionV);
+ 
+     painter->save();
+-    painter->translate(textRect.topLeft());
+-    painter->setClipRect(textRect.translated(-textRect.topLeft()));
++    painter->translate(textRect.left(), textRect.top() + offsetY);
++    painter->setClipRect(QRect(0, 0, textRect.width(), textHeight));
+     doc.documentLayout()->draw(painter, ctx);
+     painter->restore();
+ }
+@@ -36,7 +53,10 @@
+     initStyleOption(&optionV, index);
+ 
+     QTextDocument doc;
+-    doc.setHtml(optionV.text);
+-    doc.setTextWidth(optionV.rect.width());
+-    return { static_cast<int>(doc.idealWidth()), 24 };
++    setupDocument(doc, optionV);
++
++    // 行高按实际字体算：不同字体 / DPI 下行高差别很大，写死 24 会把中文下半截裁掉
++    const QFontMetrics fm(optionV.font);
++    const int textHeight = qMax(fm.height(), static_cast<int>(qCeil(doc.size().height())));
++    return { static_cast<int>(qCeil(doc.idealWidth())), textHeight + kRowPadding };
+ }
