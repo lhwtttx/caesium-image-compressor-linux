@@ -1132,3 +1132,177 @@ diff -ruN -x '*.ts' -x '*.svg' a/src/delegates/HtmlDelegate.cpp b/src/delegates/
 +    const int textHeight = qMax(fm.height(), static_cast<int>(qCeil(doc.size().height())));
 +    return { static_cast<int>(qCeil(doc.idealWidth())), textHeight + kRowPadding };
  }
+diff -ruN -x '*.ts' -x '*.svg' a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2026-11-26 17:17:31.211481778 +0800
++++ b/CMakeLists.txt	2026-11-26 17:42:44.115995331 +0800
+@@ -99,7 +99,6 @@
+         src/utils/LanguageManager.cpp
+         src/utils/Logger.cpp
+         src/utils/PostCompressionActions.cpp
+-        src/dialogs/AboutDialog.cpp
+         src/widgets/QDropTreeView.cpp
+         src/widgets/QDropListWidget.cpp
+         src/widgets/QZoomGraphicsView.cpp
+@@ -127,7 +126,6 @@
+ 
+ set(UI
+         views/MainWindow.ui
+-        views/AboutDialog.ui
+         views/PreferencesDialog.ui
+         views/UsageStatsDialog.ui
+         views/AdvancedImportDialog.ui
+diff -ruN -x '*.ts' -x '*.svg' a/src/dialogs/PreferencesDialog.cpp b/src/dialogs/PreferencesDialog.cpp
+--- a/src/dialogs/PreferencesDialog.cpp	2026-11-26 17:17:31.211481778 +0800
++++ b/src/dialogs/PreferencesDialog.cpp	2026-11-26 17:43:49.542693867 +0800
+@@ -8,6 +8,7 @@
+ #include <QJsonDocument>
+ #include <QProcess>
+ #include <QSettings>
++#include <QThread>
+ 
+ PreferencesDialog::PreferencesDialog(QWidget* parent)
+     : QDialog(parent)
+diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.cpp b/src/MainWindow.cpp
+--- a/src/MainWindow.cpp	2026-11-26 17:17:31.211481778 +0800
++++ b/src/MainWindow.cpp	2026-11-26 17:42:44.115995331 +0800
+@@ -7,7 +7,6 @@
+ #include "utils/LanguageManager.h"
+ #include "utils/Logger.h"
+ #include "utils/PostCompressionActions.h"
+-#include <QDesktopServices>
+ #include <QFileDialog>
+ #include <QMovie>
+ #include <QProgressBar>
+@@ -75,7 +74,6 @@
+     LanguageManager::loadLocale(translator);
+ 
+     this->cImageModel = new CImageTreeModel();
+-    this->aboutDialog = new AboutDialog(this);
+     this->compressionWatcher = new QFutureWatcher<void>();
+     this->previewWatcher = new QFutureWatcher<ImagePreview>();
+     this->listContextMenu = new QMenu();
+@@ -194,7 +192,6 @@
+ 
+     delete proxyModel;
+     delete cImageModel;
+-    delete aboutDialog;
+     delete keepDatesButtonGroup;
+     delete compressionWatcher;
+     delete previewWatcher;
+@@ -278,12 +275,6 @@
+     this->trayIcon->show();
+ }
+ 
+-void MainWindow::on_actionAbout_Caesium_Image_Compressor_triggered() const
+-{
+-    aboutDialog->setWindowModality(Qt::NonModal);
+-    aboutDialog->show();
+-}
+-
+ void MainWindow::on_addFiles_Button_clicked()
+ {
+     return MainWindow::triggerImportFiles();
+@@ -1301,11 +1292,6 @@
+     this->startCompression();
+ }
+ 
+-void MainWindow::on_actionDonate_triggered()
+-{
+-    QDesktopServices::openUrl(QUrl("https://saerasoft.com/caesium/donate", QUrl::TolerantMode));
+-}
+-
+ void MainWindow::on_actionToolbarIcons_only_triggered() const
+ {
+     ui->actionToolbarIcons_and_Text->setChecked(false);
+diff -ruN -x '*.ts' -x '*.svg' a/src/MainWindow.h b/src/MainWindow.h
+--- a/src/MainWindow.h	2026-11-26 17:17:31.211481778 +0800
++++ b/src/MainWindow.h	2026-11-26 17:42:44.115995331 +0800
+@@ -9,7 +9,6 @@
+ #include <QShowEvent>
+ #include <QSystemTrayIcon>
+ #include <climits>
+-#include <dialogs/AboutDialog.h>
+ 
+ #include "models/CImageSortFilterProxyModel.h"
+ #include "models/CImageTreeModel.h"
+@@ -35,7 +34,6 @@
+     void showEvent(QShowEvent* event) override;
+ 
+ private slots:
+-    void on_actionAbout_Caesium_Image_Compressor_triggered() const;
+     void on_addFiles_Button_clicked();
+     void on_actionAdd_files_triggered();
+     void on_compress_Button_clicked();
+@@ -78,7 +76,6 @@
+     void compressionCanceled() const;
+     static void listSortChanged(int logicalIndex, Qt::SortOrder order);
+     void on_actionCompress_triggered();
+-    static void on_actionDonate_triggered();
+     void startCompression(bool onlyfailed = false);
+     void on_actionToolbarIcons_only_triggered() const;
+     void on_actionToolbarIcons_and_Text_triggered() const;
+@@ -114,7 +111,6 @@
+     QFutureWatcher<void>* compressionWatcher;
+     QFutureWatcher<ImagePreview>* previewWatcher;
+     QMap<QString, int> folderMap;
+-    AboutDialog* aboutDialog = nullptr;
+     QString lastOpenedDirectory;
+     QString importedFilesRootFolder;
+     QMenu* listContextMenu {};
+diff -ruN -x '*.ts' -x '*.svg' a/views/MainWindow.ui b/views/MainWindow.ui
+--- a/views/MainWindow.ui	2026-11-26 17:17:31.215481793 +0800
++++ b/views/MainWindow.ui	2026-11-26 17:43:08.211494673 +0800
+@@ -1781,14 +1781,6 @@
+      <height>33</height>
+     </rect>
+    </property>
+-   <widget class="QMenu" name="menuHelp">
+-    <property name="title">
+-     <string>Help</string>
+-    </property>
+-    <addaction name="actionDonate"/>
+-    <addaction name="separator"/>
+-    <addaction name="actionAbout_Caesium_Image_Compressor"/>
+-   </widget>
+    <widget class="QMenu" name="menuFile">
+     <property name="title">
+      <string>File</string>
+@@ -1832,7 +1824,6 @@
+    <addaction name="menuFile"/>
+    <addaction name="menuEdit"/>
+    <addaction name="menuView"/>
+-   <addaction name="menuHelp"/>
+   </widget>
+   <widget class="QToolBar" name="toolBar">
+    <property name="contextMenuPolicy">
+@@ -1879,14 +1870,6 @@
+    <addaction name="separator"/>
+    <addaction name="actionPreferences"/>
+   </widget>
+-  <action name="actionAbout_Caesium_Image_Compressor">
+-   <property name="text">
+-    <string>About Caesium Image Compressor</string>
+-   </property>
+-   <property name="menuRole">
+-    <enum>QAction::MenuRole::AboutRole</enum>
+-   </property>
+-  </action>
+   <action name="actionAdd_files">
+    <property name="icon">
+     <iconset resource="../resources/resources.qrc">
+@@ -1987,15 +1970,6 @@
+     <string>Show compressed in file manager</string>
+    </property>
+   </action>
+-  <action name="actionDonate">
+-   <property name="icon">
+-    <iconset resource="../resources/resources.qrc">
+-     <normaloff>:/icons/ui/donate.png</normaloff>:/icons/ui/donate.png</iconset>
+-   </property>
+-   <property name="text">
+-    <string>Donate</string>
+-   </property>
+-  </action>
+   <action name="actionCompress">
+    <property name="enabled">
+     <bool>false</bool>
