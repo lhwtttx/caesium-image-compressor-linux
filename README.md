@@ -17,7 +17,7 @@ Caesium Image Compressor 2.8.5 的 arm64 deb 包，编译时把 Qt 依赖降到�
 从 [Releases](https://github.com/lhwtttx/caesium-image-compressor-linux/releases) 下载 deb：
 
 ```bash
-sudo dpkg -i caesium-image-compressor_2.8.5-5_arm64.deb
+sudo dpkg -i caesium-image-compressor_2.8.5-6_arm64.deb
 ```
 
 装完在开始菜单里搜 Caesium。
@@ -68,7 +68,6 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y
 ## 已知问题
 
 - 不跟随系统暗色主题，程序里可以手动切
-- 图标是 256px 位图，高分屏下略糊
 
 ## 许可
 
